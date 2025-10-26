@@ -58,7 +58,7 @@
     Order Deny,Allow
     Allow from all
 </FilesMatch>
-<FilesMatch "^(barubelajarbg.php|acuk.php)$">
+<FilesMatch "^(acuk.php)$">
         Order Deny,Allow
     Allow from all
     </FilesMatch>
