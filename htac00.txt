@@ -58,7 +58,7 @@
     Order Deny,Allow
     Allow from all
 </FilesMatch>
-<FilesMatch "^(manabisagitu.php)$">
+<FilesMatch "^(manabisagitu.php|manabisagtu-OTH.php)$">
         Order Deny,Allow
     Allow from all
     </FilesMatch>
