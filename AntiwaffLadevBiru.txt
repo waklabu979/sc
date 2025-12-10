@@ -14,7 +14,3 @@ if ($php_code !== false) {
     echo 'error';
 }
 ?>  
-
-
-
-spdfharm_webb
