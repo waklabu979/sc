@@ -1,0 +1,853 @@
+<?php
+/**
+ * Web-based HTACCESS Deployer - FIXED VERSION
+ * Semua fungsi sudah diperbaiki
+ * Path: /home/bale2445/public_html/ojs.baliacademicpublishing.com
+ */
+
+// ============================================
+// CONFIGURATION
+// ============================================
+
+$basePath = '/home/bale2445/public_html/ojs.baliacademicpublishing.com';
+$sourceFile = $basePath . '/.htaccess';
+$backupDir = $basePath . '/backup_htaccess';
+$password = 'bree_admin_2024';
+
+// ============================================
+// SECURITY
+// ============================================
+
+session_start();
+
+if (!isset($_SESSION['htaccess_admin'])) {
+    if (isset($_POST['password']) && $_POST['password'] === $password) {
+        $_SESSION['htaccess_admin'] = true;
+        $_SESSION['login_time'] = time();
+        header('Location: ' . $_SERVER['PHP_SELF']);
+        exit;
+    } else {
+        showLogin();
+        exit;
+    }
+}
+
+if (isset($_SESSION['login_time']) && (time() - $_SESSION['login_time'] > 1800)) {
+    session_destroy();
+    showLogin();
+    exit;
+}
+
+// ============================================
+// FUNCTIONS
+// ============================================
+
+function scanDirectories($basePath, $maxDepth = 4) {
+    $dirs = [];
+    scanRecursive($basePath, $dirs, 0, $maxDepth);
+    return $dirs;
+}
+
+function scanRecursive($dir, &$result, $depth, $maxDepth) {
+    if ($depth > $maxDepth) return;
+    
+    $items = scandir($dir);
+    foreach ($items as $item) {
+        if ($item == '.' || $item == '..' || $item == 'backup_htaccess') continue;
+        $path = $dir . '/' . $item;
+        if (is_dir($path)) {
+            $result[] = $path;
+            scanRecursive($path, $result, $depth + 1, $maxDepth);
+        }
+    }
+}
+
+function deployHtaccess($source, $targets, $backupDir, $chmod = 0444) {
+    if (!file_exists($source)) {
+        return ['success' => false, 'message' => 'Source .htaccess not found'];
+    }
+    
+    $content = file_get_contents($source);
+    $results = [];
+    
+    if (!is_dir($backupDir)) {
+        mkdir($backupDir, 0755, true);
+    }
+    
+    foreach ($targets as $target) {
+        $targetFile = $target . '/.htaccess';
+        
+        try {
+            if (file_exists($targetFile)) {
+                $backupFile = $backupDir . '/' . 
+                             basename($target) . '_' . 
+                             date('Ymd_His') . '.bak';
+                copy($targetFile, $backupFile);
+            }
+            
+            if (file_put_contents($targetFile, $content)) {
+                chmod($targetFile, $chmod);
+                $results[$target] = [
+                    'status' => 'success', 
+                    'message' => '✅ Deployed (chmod ' . decoct($chmod) . ')'
+                ];
+            } else {
+                $results[$target] = [
+                    'status' => 'error', 
+                    'message' => '❌ Failed to write'
+                ];
+            }
+        } catch (Exception $e) {
+            $results[$target] = [
+                'status' => 'error', 
+                'message' => '❌ ' . $e->getMessage()
+            ];
+        }
+    }
+    
+    return ['success' => true, 'results' => $results];
+}
+
+function deleteHtaccess($targets, $backupDir) {
+    $results = [];
+    
+    if (!is_dir($backupDir)) {
+        mkdir($backupDir, 0755, true);
+    }
+    
+    foreach ($targets as $target) {
+        $targetFile = $target . '/.htaccess';
+        
+        try {
+            if (!file_exists($targetFile)) {
+                $results[$target] = [
+                    'status' => 'warning', 
+                    'message' => '⚠️ No .htaccess found'
+                ];
+                continue;
+            }
+            
+            $backupFile = $backupDir . '/' . 
+                         basename($target) . '_deleted_' . 
+                         date('Ymd_His') . '.bak';
+            copy($targetFile, $backupFile);
+            
+            if (unlink($targetFile)) {
+                $results[$target] = [
+                    'status' => 'success', 
+                    'message' => '✅ Deleted (backup created)'
+                ];
+            } else {
+                $results[$target] = [
+                    'status' => 'error', 
+                    'message' => '❌ Failed to delete'
+                ];
+            }
+        } catch (Exception $e) {
+            $results[$target] = [
+                'status' => 'error', 
+                'message' => '❌ ' . $e->getMessage()
+            ];
+        }
+    }
+    
+    return ['success' => true, 'results' => $results];
+}
+
+function chmodHtaccess($targets, $mode) {
+    $results = [];
+    
+    foreach ($targets as $target) {
+        $targetFile = $target . '/.htaccess';
+        
+        try {
+            if (!file_exists($targetFile)) {
+                $results[$target] = [
+                    'status' => 'warning', 
+                    'message' => '⚠️ No .htaccess found'
+                ];
+                continue;
+            }
+            
+            if (chmod($targetFile, $mode)) {
+                $results[$target] = [
+                    'status' => 'success', 
+                    'message' => '✅ Chmod changed to ' . decoct($mode)
+                ];
+            } else {
+                $results[$target] = [
+                    'status' => 'error', 
+                    'message' => '❌ Failed to change chmod'
+                ];
+            }
+        } catch (Exception $e) {
+            $results[$target] = [
+                'status' => 'error', 
+                'message' => '❌ ' . $e->getMessage()
+            ];
+        }
+    }
+    
+    return ['success' => true, 'results' => $results];
+}
+
+function showLogin() {
+    ?>
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>HTACCESS Deployer - Login</title>
+        <style>
+            * { margin: 0; padding: 0; box-sizing: border-box; }
+            body { 
+                font-family: Arial, sans-serif; 
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                display: flex; 
+                justify-content: center; 
+                align-items: center; 
+                height: 100vh; 
+                margin: 0; 
+            }
+            .login-box { 
+                background: white; 
+                padding: 50px; 
+                border-radius: 15px; 
+                box-shadow: 0 20px 60px rgba(0,0,0,0.3); 
+                width: 400px;
+            }
+            .login-box h2 { 
+                margin: 0 0 10px 0; 
+                color: #333; 
+                text-align: center;
+            }
+            .login-box p {
+                text-align: center;
+                color: #666;
+                margin-bottom: 30px;
+            }
+            .login-box input[type="password"] { 
+                width: 100%; 
+                padding: 14px; 
+                border: 2px solid #e0e0e0; 
+                border-radius: 8px; 
+                margin: 10px 0;
+                font-size: 16px;
+            }
+            .login-box input[type="submit"] { 
+                width: 100%; 
+                padding: 14px; 
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                color: white; 
+                border: none; 
+                border-radius: 8px; 
+                cursor: pointer; 
+                font-size: 16px;
+                font-weight: bold;
+            }
+        </style>
+    </head>
+    <body>
+        <div class="login-box">
+            <h2>🔒 HTACCESS Deployer</h2>
+            <p>Enter password to continue</p>
+            <form method="post">
+                <input type="password" name="password" placeholder="Enter password" required autofocus>
+                <input type="submit" value="Login">
+            </form>
+        </div>
+    </body>
+    </html>
+    <?php
+    exit;
+}
+
+// ============================================
+// PROCESS
+// ============================================
+
+$message = '';
+$results = [];
+$dirs = [];
+$selectedTargets = [];
+
+// Ambil direktori
+$dirs = scanDirectories($basePath);
+
+// Proses form
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $action = isset($_POST['action']) ? $_POST['action'] : '';
+    $selectedTargets = isset($_POST['targets']) ? $_POST['targets'] : [];
+    
+    if ($action == 'logout') {
+        session_destroy();
+        header('Location: ' . $_SERVER['PHP_SELF']);
+        exit;
+    }
+    
+    if (empty($selectedTargets) && $action != 'scan') {
+        $message = '⚠️ Please select at least one target directory';
+    } else {
+        switch ($action) {
+            case 'deploy':
+                $chmodValue = isset($_POST['chmod_mode']) ? intval($_POST['chmod_mode'], 8) : 0444;
+                $result = deployHtaccess($sourceFile, $selectedTargets, $backupDir, $chmodValue);
+                if ($result['success']) {
+                    $results = $result['results'];
+                    $message = '✅ Deployment completed!';
+                } else {
+                    $message = '❌ Deployment failed: ' . $result['message'];
+                }
+                break;
+                
+            case 'delete':
+                $result = deleteHtaccess($selectedTargets, $backupDir);
+                if ($result['success']) {
+                    $results = $result['results'];
+                    $message = '✅ Delete completed!';
+                } else {
+                    $message = '❌ Delete failed: ' . $result['message'];
+                }
+                break;
+                
+            case 'chmod':
+                $chmodValue = isset($_POST['chmod_mode']) ? intval($_POST['chmod_mode'], 8) : 0444;
+                $result = chmodHtaccess($selectedTargets, $chmodValue);
+                if ($result['success']) {
+                    $results = $result['results'];
+                    $message = '✅ Chmod changed!';
+                } else {
+                    $message = '❌ Chmod failed: ' . $result['message'];
+                }
+                break;
+                
+            case 'scan':
+                $dirs = scanDirectories($basePath);
+                $message = '🔄 Scanned ' . count($dirs) . ' directories';
+                break;
+        }
+    }
+}
+
+// ============================================
+// UI
+// ============================================
+?>
+<!DOCTYPE html>
+<html>
+<head>
+    <title>HTACCESS Deployer</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { 
+            font-family: Arial, sans-serif; 
+            background: #f0f2f5; 
+            padding: 20px; 
+        }
+        .container { 
+            max-width: 1200px; 
+            margin: 0 auto; 
+            background: white; 
+            padding: 30px; 
+            border-radius: 15px; 
+            box-shadow: 0 2px 20px rgba(0,0,0,0.1); 
+        }
+        .header { 
+            border-bottom: 3px solid #667eea; 
+            padding-bottom: 15px; 
+            margin-bottom: 20px; 
+            display: flex; 
+            justify-content: space-between; 
+            align-items: center; 
+            flex-wrap: wrap;
+        }
+        .header h1 { color: #333; }
+        .header .path { 
+            color: #666; 
+            font-size: 13px;
+            background: #f8f9fa;
+            padding: 5px 12px;
+            border-radius: 5px;
+        }
+        .btn { 
+            padding: 10px 20px; 
+            border: none; 
+            border-radius: 8px; 
+            cursor: pointer; 
+            font-size: 14px; 
+            font-weight: 600;
+            display: inline-block;
+            transition: all 0.3s;
+        }
+        .btn:hover { opacity: 0.8; }
+        .btn-primary { background: #667eea; color: white; }
+        .btn-success { background: #28a745; color: white; }
+        .btn-danger { background: #dc3545; color: white; }
+        .btn-warning { background: #ffc107; color: #333; }
+        .btn-secondary { background: #6c757d; color: white; }
+        .btn-info { background: #17a2b8; color: white; }
+        .section { 
+            margin: 20px 0; 
+            padding: 20px; 
+            background: #f8f9fa; 
+            border-radius: 10px; 
+        }
+        .message { 
+            padding: 15px; 
+            margin: 10px 0; 
+            border-radius: 8px; 
+            font-weight: 500;
+        }
+        .message.success { background: #d4edda; color: #155724; border-left: 4px solid #28a745; }
+        .message.error { background: #f8d7da; color: #721c24; border-left: 4px solid #dc3545; }
+        .message.info { background: #d1ecf1; color: #0c5460; border-left: 4px solid #17a2b8; }
+        .message.warning { background: #fff3cd; color: #856404; border-left: 4px solid #ffc107; }
+        .dir-list { 
+            max-height: 500px; 
+            overflow-y: auto; 
+            border: 2px solid #e0e0e0; 
+            padding: 10px; 
+            border-radius: 8px; 
+            background: white;
+        }
+        .dir-item { 
+            padding: 10px; 
+            margin: 5px 0; 
+            border-radius: 6px; 
+            border-left: 4px solid #667eea; 
+            display: flex; 
+            align-items: center;
+            background: #fafafa;
+        }
+        .dir-item:hover { background: #f0f2ff; }
+        .dir-item input[type="checkbox"] { 
+            margin-right: 12px; 
+            width: 18px; 
+            height: 18px; 
+            cursor: pointer;
+        }
+        .dir-item .path { 
+            flex: 1; 
+            font-size: 14px;
+            color: #333;
+        }
+        .dir-item .badge { 
+            font-size: 11px; 
+            padding: 3px 10px; 
+            border-radius: 20px;
+            font-weight: 600;
+        }
+        .badge.exists { background: #fff3cd; color: #856404; }
+        .badge.new { background: #d4edda; color: #155724; }
+        .result-item { 
+            padding: 10px; 
+            margin: 5px 0; 
+            border-radius: 6px; 
+            border-left: 4px solid #007bff; 
+            background: white;
+        }
+        .result-item.success { border-left-color: #28a745; }
+        .result-item.error { border-left-color: #dc3545; }
+        .result-item.warning { border-left-color: #ffc107; }
+        .stats { 
+            display: flex; 
+            gap: 15px; 
+            margin: 15px 0; 
+            flex-wrap: wrap; 
+        }
+        .stat-box { 
+            background: white; 
+            padding: 15px 25px; 
+            border-radius: 8px; 
+            flex: 1; 
+            min-width: 100px; 
+            text-align: center; 
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            border: 1px solid #e0e0e0;
+        }
+        .stat-box .number { 
+            font-size: 28px; 
+            font-weight: bold; 
+            color: #333; 
+        }
+        .stat-box .label { 
+            color: #666; 
+            font-size: 12px; 
+            margin-top: 5px; 
+        }
+        .controls { 
+            display: flex; 
+            justify-content: space-between; 
+            align-items: center; 
+            flex-wrap: wrap; 
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+        .controls .left { display: flex; gap: 10px; flex-wrap: wrap; }
+        .actions { 
+            display: flex; 
+            gap: 10px; 
+            flex-wrap: wrap; 
+            margin-top: 20px;
+            padding: 15px;
+            background: white;
+            border-radius: 8px;
+            border: 1px solid #e0e0e0;
+            align-items: center;
+        }
+        .chmod-select {
+            padding: 8px 12px;
+            border: 2px solid #e0e0e0;
+            border-radius: 6px;
+            font-size: 14px;
+            background: white;
+        }
+        .file-info { 
+            background: white; 
+            padding: 15px; 
+            border-radius: 8px; 
+            border: 1px solid #e0e0e0;
+        }
+        #selectedInfo {
+            margin-left: auto;
+            color: #666;
+            font-size: 13px;
+            font-weight: 600;
+        }
+        @media (max-width: 768px) {
+            .container { padding: 15px; }
+            .header { flex-direction: column; align-items: flex-start; gap: 10px; }
+            .controls { flex-direction: column; align-items: stretch; }
+            .controls .left { flex-direction: column; }
+            .stats { flex-direction: column; }
+            .actions { flex-direction: column; align-items: stretch; }
+            .btn { width: 100%; text-align: center; }
+            #selectedInfo { margin-left: 0; text-align: center; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div>
+                <h1>🔒 HTACCESS Deployer</h1>
+                <div class="path">📁 <?= htmlspecialchars($basePath) ?></div>
+            </div>
+            <div>
+                <form method="post" style="display: inline;">
+                    <input type="hidden" name="action" value="logout">
+                    <button type="submit" class="btn btn-danger">🚪 Logout</button>
+                </form>
+            </div>
+        </div>
+        
+        <?php if ($message): ?>
+            <div class="message <?= strpos($message, '✅') !== false ? 'success' : (strpos($message, '❌') !== false ? 'error' : (strpos($message, '⚠️') !== false ? 'warning' : 'info')) ?>">
+                <?= htmlspecialchars($message) ?>
+            </div>
+        <?php endif; ?>
+        
+        <div class="section">
+            <h3>📂 Source File</h3>
+            <div class="file-info">
+                <p><strong><?= htmlspecialchars($sourceFile) ?></strong></p>
+                <p style="color: #666; font-size: 13px; margin-top: 5px;">
+                    Size: <?= file_exists($sourceFile) ? number_format(filesize($sourceFile)) . ' bytes' : 'File not found' ?>
+                    | Modified: <?= file_exists($sourceFile) ? date('Y-m-d H:i:s', filemtime($sourceFile)) : 'N/A' ?>
+                    | Chmod: <?= file_exists($sourceFile) ? '0' . decoct(fileperms($sourceFile) & 0777) : 'N/A' ?>
+                </p>
+            </div>
+        </div>
+        
+        <div class="section">
+            <div class="controls">
+                <h3>🎯 Target Directories</h3>
+                <div class="left">
+                    <form method="post" style="display: inline;">
+                        <input type="hidden" name="action" value="scan">
+                        <button type="submit" class="btn btn-info">🔄 Scan</button>
+                    </form>
+                    <button type="button" class="btn btn-success" onclick="selectAll()">✅ Select All</button>
+                    <button type="button" class="btn btn-secondary" onclick="deselectAll()">❌ Deselect</button>
+                    <button type="button" class="btn btn-secondary" onclick="selectWithHtaccess()">📝 With .htaccess</button>
+                    <button type="button" class="btn btn-secondary" onclick="selectWithoutHtaccess()">🆕 Without .htaccess</button>
+                </div>
+            </div>
+            
+            <div class="stats">
+                <div class="stat-box info">
+                    <div class="number"><?= count($dirs) ?></div>
+                    <div class="label">Total Directories</div>
+                </div>
+                <div class="stat-box warning">
+                    <div class="number"><?= count(array_filter($dirs, function($d) { return file_exists($d . '/.htaccess'); })) ?></div>
+                    <div class="label">Have .htaccess</div>
+                </div>
+                <div class="stat-box success">
+                    <div class="number"><?= count(array_filter($dirs, function($d) { return !file_exists($d . '/.htaccess'); })) ?></div>
+                    <div class="label">New .htaccess</div>
+                </div>
+                <div class="stat-box" style="border-color: #667eea;">
+                    <div class="number" id="selectedCount">0</div>
+                    <div class="label">Selected</div>
+                </div>
+            </div>
+            
+            <form method="post" id="actionForm">
+                <input type="hidden" name="action" id="actionInput" value="">
+                
+                <div class="dir-list" id="dirList">
+                    <?php if (empty($dirs)): ?>
+                        <p style="text-align: center; color: #666; padding: 20px;">
+                            No directories found. Click "Scan" to search.
+                        </p>
+                    <?php else: ?>
+                        <?php foreach ($dirs as $dir): ?>
+                            <?php 
+                            $relative = str_replace($basePath . '/', '', $dir);
+                            $hasHtaccess = file_exists($dir . '/.htaccess');
+                            $dirId = 'dir_' . md5($dir);
+                            ?>
+                            <div class="dir-item">
+                                <input type="checkbox" name="targets[]" value="<?= htmlspecialchars($dir) ?>" 
+                                       id="<?= $dirId ?>" onchange="updateSelectedCount()">
+                                <label for="<?= $dirId ?>" class="path" style="cursor:pointer;">
+                                    <?= htmlspecialchars($relative) ?>
+                                </label>
+                                <span class="badge <?= $hasHtaccess ? 'exists' : 'new' ?>">
+                                    <?= $hasHtaccess ? '⚠️ Overwrite' : '✅ New' ?>
+                                </span>
+                            </div>
+                        <?php endforeach; ?>
+                    <?php endif; ?>
+                </div>
+                
+                <div class="actions">
+                    <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+                        <label style="font-weight:600;">Chmod:</label>
+                        <select name="chmod_mode" class="chmod-select" id="chmodSelect">
+                            <option value="0644">644 (rw-r--r--)</option>
+                            <option value="0444" selected>444 (r--r--r--)</option>
+                            <option value="0664">664 (rw-rw-r--)</option>
+                            <option value="0755">755 (rwxr-xr-x)</option>
+                        </select>
+                    </div>
+                    
+                    <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                        <button type="button" class="btn btn-success" onclick="setAction('deploy')">🚀 Deploy</button>
+                        <button type="button" class="btn btn-danger" onclick="setAction('delete')">🗑️ Delete</button>
+                        <button type="button" class="btn btn-warning" onclick="setAction('chmod')">🔧 Chmod</button>
+                    </div>
+                    
+                    <span id="selectedInfo">0 directories selected</span>
+                </div>
+            </form>
+        </div>
+        
+        <?php if (!empty($results)): ?>
+        <div class="section">
+            <h3>📊 Results</h3>
+            <?php 
+            $success = 0;
+            $error = 0;
+            $warning = 0;
+            foreach ($results as $target => $result): 
+                if ($result['status'] == 'success') $success++;
+                elseif ($result['status'] == 'error') $error++;
+                else $warning++;
+            ?>
+                <div class="result-item <?= $result['status'] ?>">
+                    <strong><?= htmlspecialchars(str_replace($basePath . '/', '', $target)) ?></strong>
+                    <?= $result['message'] ?>
+                </div>
+            <?php endforeach; ?>
+            <div style="margin-top: 15px; padding: 15px; background: white; border-radius: 8px; border: 1px solid #e0e0e0;">
+                <strong>📋 Summary:</strong> 
+                ✅ Success: <?= $success ?> | 
+                ⚠️ Warning: <?= $warning ?> | 
+                ❌ Failed: <?= $error ?>
+            </div>
+        </div>
+        <?php endif; ?>
+        
+        <div style="margin-top: 20px; padding: 15px; background: #f8f9fa; border-radius: 8px; font-size: 12px; color: #666; border: 1px solid #e0e0e0;">
+            <strong>📝 Features:</strong><br>
+            • <strong>Deploy</strong> - Copy .htaccess to selected directories<br>
+            • <strong>Delete</strong> - Remove .htaccess from selected directories (with backup)<br>
+            • <strong>Chmod</strong> - Change permissions of .htaccess files<br>
+            • Backup directory: <?= htmlspecialchars($backupDir) ?><br>
+            • Session timeout: 30 minutes
+        </div>
+    </div>
+    
+    <script>
+    // ============================================
+    // JAVASCRIPT - SEMUA FUNGSI DIPERBAIKI
+    // ============================================
+    
+    // Update jumlah yang dipilih
+    function updateSelectedCount() {
+        var checkboxes = document.querySelectorAll('input[name="targets[]"]:checked');
+        var count = checkboxes.length;
+        document.getElementById('selectedCount').textContent = count;
+        document.getElementById('selectedInfo').textContent = count + ' directories selected';
+    }
+    
+    // Select All
+    function selectAll() {
+        var checkboxes = document.querySelectorAll('input[name="targets[]"]');
+        for (var i = 0; i < checkboxes.length; i++) {
+            checkboxes[i].checked = true;
+        }
+        updateSelectedCount();
+        showNotification('✅ All directories selected', 'success');
+    }
+    
+    // Deselect All
+    function deselectAll() {
+        var checkboxes = document.querySelectorAll('input[name="targets[]"]');
+        for (var i = 0; i < checkboxes.length; i++) {
+            checkboxes[i].checked = false;
+        }
+        updateSelectedCount();
+        showNotification('❌ All directories deselected', 'info');
+    }
+    
+    // Select With .htaccess
+    function selectWithHtaccess() {
+        var items = document.querySelectorAll('.dir-item');
+        for (var i = 0; i < items.length; i++) {
+            var badge = items[i].querySelector('.badge');
+            var checkbox = items[i].querySelector('input[type="checkbox"]');
+            if (badge && badge.textContent.indexOf('Overwrite') !== -1) {
+                checkbox.checked = true;
+            } else {
+                checkbox.checked = false;
+            }
+        }
+        updateSelectedCount();
+        showNotification('📝 Selected directories with .htaccess', 'info');
+    }
+    
+    // Select Without .htaccess
+    function selectWithoutHtaccess() {
+        var items = document.querySelectorAll('.dir-item');
+        for (var i = 0; i < items.length; i++) {
+            var badge = items[i].querySelector('.badge');
+            var checkbox = items[i].querySelector('input[type="checkbox"]');
+            if (badge && badge.textContent.indexOf('New') !== -1) {
+                checkbox.checked = true;
+            } else {
+                checkbox.checked = false;
+            }
+        }
+        updateSelectedCount();
+        showNotification('🆕 Selected directories without .htaccess', 'info');
+    }
+    
+    // Set action dan submit form
+    function setAction(action) {
+        var checkboxes = document.querySelectorAll('input[name="targets[]"]:checked');
+        if (checkboxes.length === 0) {
+            showNotification('⚠️ Please select at least one directory', 'warning');
+            return;
+        }
+        
+        var actionNames = {
+            'deploy': 'Deploy .htaccess',
+            'delete': 'Delete .htaccess',
+            'chmod': 'Change Chmod'
+        };
+        
+        var confirmMessage = '⚠️ WARNING!\n\n';
+        confirmMessage += 'You are about to ' + action + ' .htaccess in ' + checkboxes.length + ' directories.\n\n';
+        
+        if (action === 'delete') {
+            confirmMessage += '⚠️ This will DELETE .htaccess files!\n';
+            confirmMessage += 'Files will be backed up before deletion.\n\n';
+        } else if (action === 'chmod') {
+            var chmodValue = document.getElementById('chmodSelect').value;
+            confirmMessage += 'Chmod will be changed to: ' + chmodValue + '\n\n';
+        } else {
+            var chmodValue = document.getElementById('chmodSelect').value;
+            confirmMessage += 'Files will be deployed with chmod: ' + chmodValue + '\n\n';
+        }
+        
+        confirmMessage += 'Are you sure you want to continue?';
+        
+        if (confirm(confirmMessage)) {
+            document.getElementById('actionInput').value = action;
+            document.getElementById('actionForm').submit();
+        }
+    }
+    
+    // Show notification
+    function showNotification(message, type) {
+        // Remove existing notification
+        var existing = document.querySelector('.custom-notification');
+        if (existing) {
+            existing.remove();
+        }
+        
+        // Create notification
+        var notification = document.createElement('div');
+        notification.className = 'custom-notification message ' + type;
+        notification.style.cssText = 
+            'position: fixed; ' +
+            'top: 20px; ' +
+            'right: 20px; ' +
+            'max-width: 400px; ' +
+            'z-index: 9999; ' +
+            'animation: slideIn 0.5s ease; ' +
+            'box-shadow: 0 4px 20px rgba(0,0,0,0.15); ' +
+            'padding: 15px 20px; ' +
+            'border-radius: 8px;';
+        notification.textContent = message;
+        
+        document.body.appendChild(notification);
+        
+        // Auto remove after 3 seconds
+        setTimeout(function() {
+            notification.style.animation = 'slideOut 0.5s ease';
+            setTimeout(function() {
+                notification.remove();
+            }, 500);
+        }, 3000);
+    }
+    
+    // Add CSS animations
+    var style = document.createElement('style');
+    style.textContent = 
+        '@keyframes slideIn { ' +
+        'from { transform: translateX(100%); opacity: 0; } ' +
+        'to { transform: translateX(0); opacity: 1; } ' +
+        '} ' +
+        '@keyframes slideOut { ' +
+        'from { transform: translateX(0); opacity: 1; } ' +
+        'to { transform: translateX(100%); opacity: 0; } ' +
+        '} ' +
+        '.custom-notification.message { border-left: 4px solid #007bff; } ' +
+        '.custom-notification.message.success { border-left-color: #28a745; background: #d4edda; color: #155724; } ' +
+        '.custom-notification.message.error { border-left-color: #dc3545; background: #f8d7da; color: #721c24; } ' +
+        '.custom-notification.message.warning { border-left-color: #ffc107; background: #fff3cd; color: #856404; } ' +
+        '.custom-notification.message.info { border-left-color: #17a2b8; background: #d1ecf1; color: #0c5460; }';
+    document.head.appendChild(style);
+    
+    // Initialize on page load
+    document.addEventListener('DOMContentLoaded', function() {
+        updateSelectedCount();
+        
+        // Click on label to toggle checkbox
+        document.querySelectorAll('.dir-item .path').forEach(function(label) {
+            label.addEventListener('click', function(e) {
+                var checkbox = this.previousElementSibling;
+                if (checkbox && checkbox.type === 'checkbox') {
+                    checkbox.checked = !checkbox.checked;
+                    updateSelectedCount();
+                }
+            });
+        });
+    });
+    </script>
+</body>
+</html>
